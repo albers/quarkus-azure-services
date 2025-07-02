@@ -14,7 +14,6 @@ import java.util.Map;
 import org.jboss.logging.Logger;
 import org.testcontainers.azure.ServiceBusEmulatorContainer;
 import org.testcontainers.containers.MSSQLServerContainer;
-import org.testcontainers.containers.Network;
 import org.testcontainers.utility.MountableFile;
 
 import io.quarkus.arc.deployment.ValidationPhaseBuildItem.ValidationErrorBuildItem;
@@ -23,7 +22,9 @@ import io.quarkus.deployment.annotations.BuildProducer;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.builditem.DevServicesResultBuildItem;
 import io.quarkus.deployment.builditem.DevServicesResultBuildItem.RunningDevService;
+import io.quarkus.deployment.builditem.DevServicesSharedNetworkBuildItem;
 import io.quarkus.deployment.dev.devservices.DevServicesConfig;
+import io.quarkus.devservices.common.ConfigureUtil;
 import io.quarkus.runtime.configuration.ConfigUtils;
 import io.quarkus.runtime.configuration.ConfigurationException;
 
@@ -37,14 +38,16 @@ public class ServiceBusDevServicesProcessor {
 
     @BuildStep(onlyIfNot = IsNormal.class, onlyIf = { DevServicesConfig.Enabled.class,
             ServiceBusDevServicesConfig.Enabled.class })
-    public List<DevServicesResultBuildItem> startServiceBusEmulator(ServiceBusDevServicesConfig devServicesConfig,
-            BuildProducer<ValidationErrorBuildItem> configErrors) {
-        if (isServiceBusConnectionConfigured() || hasConfigurationProblems(devServicesConfig, configErrors)) {
+    public List<DevServicesResultBuildItem> startServiceBusEmulator(ServiceBusDevServicesConfig serviceBusDevServicesConfig,
+            BuildProducer<ValidationErrorBuildItem> configErrors,
+            DevServicesConfig devServicesConfig,
+            List<DevServicesSharedNetworkBuildItem> devServicesSharedNetworkBuildItem) {
+        if (isServiceBusConnectionConfigured() || hasConfigurationProblems(serviceBusDevServicesConfig, configErrors)) {
             return null;
         }
 
         if (devServices == null) {
-            devServices = startContainers(devServicesConfig);
+            devServices = startContainers(serviceBusDevServicesConfig, devServicesConfig, devServicesSharedNetworkBuildItem);
         }
 
         return devServices.stream()
@@ -81,20 +84,25 @@ public class ServiceBusDevServicesProcessor {
         return resourceUrl == null;
     }
 
-    private List<RunningDevService> startContainers(ServiceBusDevServicesConfig devServicesConfig) {
+    private List<RunningDevService> startContainers(ServiceBusDevServicesConfig serviceBusDevServicesConfig,
+            DevServicesConfig devServicesConfig, List<DevServicesSharedNetworkBuildItem> devServicesSharedNetworkBuildItem) {
         log.info("Dev Services for Azure Service Bus starting the Azure Service Bus emulator");
 
-        Network internalNetwork = Network.newNetwork();
+        boolean useSharedNetwork = DevServicesSharedNetworkBuildItem.isSharedNetworkRequired(devServicesConfig,
+                devServicesSharedNetworkBuildItem);
 
-        MSSQLServerContainer<?> database = new MSSQLServerContainer<>(devServicesConfig.database().imageName())
-                .acceptLicense()
-                .withNetwork(internalNetwork);
+        log.debugf("Dev Services for Azure Service Bus will use shared network: %s", useSharedNetwork);
 
-        ServiceBusEmulatorContainer emulator = new ServiceBusEmulatorContainer(devServicesConfig.emulator().imageName())
+        MSSQLServerContainer<?> database = new MSSQLServerContainer<>(serviceBusDevServicesConfig.database().imageName())
+                .acceptLicense();
+        ConfigureUtil.configureSharedNetwork(database, "database");
+
+        ServiceBusEmulatorContainer emulator = new ServiceBusEmulatorContainer(
+                serviceBusDevServicesConfig.emulator().imageName())
                 .acceptLicense()
                 .withConfig(MountableFile.forClasspathResource(EMULATOR_CONFIG_FILE))
-                .withMsSqlServerContainer(database)
-                .withNetwork(internalNetwork);
+                .withMsSqlServerContainer(database);
+        ConfigureUtil.configureSharedNetwork(emulator, "emulator");
 
         emulator.start();
         log.infof("Azure Service Bus emulator started - connection string is '%s'", emulator.getConnectionString());
