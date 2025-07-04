@@ -84,17 +84,17 @@ public class ServiceBusDevServicesProcessor {
     private List<RunningDevService> startContainers(ServiceBusDevServicesConfig devServicesConfig) {
         log.info("Dev Services for Azure Service Bus starting the Azure Service Bus emulator");
 
-        Network internalNetwork = Network.newNetwork();
+        Network sharedNetwork = Network.SHARED;
 
         MSSQLServerContainer<?> database = new MSSQLServerContainer<>(devServicesConfig.database().imageName())
                 .acceptLicense()
-                .withNetwork(internalNetwork);
+                .withNetwork(sharedNetwork);
 
         ServiceBusEmulatorContainer emulator = new ServiceBusEmulatorContainer(devServicesConfig.emulator().imageName())
                 .acceptLicense()
                 .withConfig(MountableFile.forClasspathResource(EMULATOR_CONFIG_FILE))
                 .withMsSqlServerContainer(database)
-                .withNetwork(internalNetwork);
+                .withNetwork(sharedNetwork);
 
         emulator.start();
         log.infof("Azure Service Bus emulator started - connection string is '%s'", emulator.getConnectionString());
