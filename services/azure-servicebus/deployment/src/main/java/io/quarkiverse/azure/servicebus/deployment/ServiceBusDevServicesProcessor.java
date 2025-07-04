@@ -1,22 +1,5 @@
 package io.quarkiverse.azure.servicebus.deployment;
 
-import static io.quarkiverse.azure.servicebus.deployment.ServiceBusDevServicesConfig.CONFIG_KEY_DEVSERVICE_ENABLED;
-import static io.quarkiverse.azure.servicebus.deployment.ServiceBusDevServicesConfig.CONFIG_KEY_LICENSE_ACCEPTED;
-import static io.quarkiverse.azure.servicebus.deployment.ServiceBusProcessor.FEATURE;
-import static io.quarkiverse.azure.servicebus.runtime.ServiceBusConfig.CONFIG_KEY_CONNECTION_STRING;
-import static io.quarkiverse.azure.servicebus.runtime.ServiceBusConfig.CONFIG_KEY_NAMESPACE;
-
-import java.net.URL;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-
-import org.jboss.logging.Logger;
-import org.testcontainers.azure.ServiceBusEmulatorContainer;
-import org.testcontainers.containers.MSSQLServerContainer;
-import org.testcontainers.containers.Network;
-import org.testcontainers.utility.MountableFile;
-
 import io.quarkus.arc.deployment.ValidationPhaseBuildItem.ValidationErrorBuildItem;
 import io.quarkus.deployment.IsNormal;
 import io.quarkus.deployment.annotations.BuildProducer;
@@ -26,6 +9,22 @@ import io.quarkus.deployment.builditem.DevServicesResultBuildItem.RunningDevServ
 import io.quarkus.deployment.dev.devservices.DevServicesConfig;
 import io.quarkus.runtime.configuration.ConfigUtils;
 import io.quarkus.runtime.configuration.ConfigurationException;
+import org.jboss.logging.Logger;
+import org.testcontainers.azure.ServiceBusEmulatorContainer;
+import org.testcontainers.containers.MSSQLServerContainer;
+import org.testcontainers.containers.Network;
+import org.testcontainers.utility.MountableFile;
+
+import java.net.URL;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static io.quarkiverse.azure.servicebus.deployment.ServiceBusDevServicesConfig.CONFIG_KEY_DEVSERVICE_ENABLED;
+import static io.quarkiverse.azure.servicebus.deployment.ServiceBusDevServicesConfig.CONFIG_KEY_LICENSE_ACCEPTED;
+import static io.quarkiverse.azure.servicebus.deployment.ServiceBusProcessor.FEATURE;
+import static io.quarkiverse.azure.servicebus.runtime.ServiceBusConfig.CONFIG_KEY_CONNECTION_STRING;
+import static io.quarkiverse.azure.servicebus.runtime.ServiceBusConfig.CONFIG_KEY_NAMESPACE;
 
 public class ServiceBusDevServicesProcessor {
 
@@ -97,10 +96,16 @@ public class ServiceBusDevServicesProcessor {
                 .withNetwork(sharedNetwork);
 
         emulator.start();
-        log.infof("Azure Service Bus emulator started - connection string is '%s'", emulator.getConnectionString());
+        log.infof("Azure Service Bus emulator started - original connection string is '%s'", emulator.getConnectionString());
 
-        Map<String, String> configOverrides = Map.of(CONFIG_KEY_CONNECTION_STRING,
-                emulator.getConnectionString());
+        String adjustedConnectionString = emulator.getConnectionString()
+                .replace(emulator.getHost(), emulator.getNetworkAliases().get(0))
+                .replace(String.valueOf(emulator.getMappedPort(5672)), "5672");
+        log.infof("Azure Service Bus emulator started - adjusted connection string is '%s'", adjustedConnectionString);
+
+        Map<String, String> configOverrides = Map.of(
+                CONFIG_KEY_CONNECTION_STRING,
+                adjustedConnectionString);
 
         RunningDevService databaseDevService = new RunningDevService(FEATURE, database.getContainerId(), database::close,
                 Collections.emptyMap());
